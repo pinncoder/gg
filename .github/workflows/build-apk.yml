@@ -1,0 +1,41 @@
+
+name: PURE HD AI Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Extract project
+        run: unzip -q PureHD-AI-Phase1-fixed.zip
+
+      - name: Build APK
+        working-directory: PureHD-AI
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PureHD-AI-debug-apk
+          path: PureHD-AI/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          
