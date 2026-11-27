@@ -4,7 +4,6 @@ name: PURE HD AI - Phase 1 Build
 on:
   push:
     branches: [main, master]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -14,7 +13,7 @@ jobs:
   build:
     name: Build Android Debug APK
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Repository
@@ -28,54 +27,49 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
 
-      - name: Accept Android SDK Licenses
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager --install \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-
-      - name: Extract and Locate Android Project
+      - name: Extract Android Project
         shell: bash
         run: |
           set -e
-
           mkdir -p _source
 
-          # Extract ZIP files if the project is uploaded as ZIP
-          shopt -s nullglob
           for file in *.zip; do
-            echo "Extracting: $file"
-            unzip -q -o "$file" -d _source
+            [ -f "$file" ] || continue
+            unzip -oq "$file" -d _source
           done
 
-          # Find Gradle project root
-          PROJECT_DIR=$(find . \
-            -type f \
-            -name gradlew \
-            -not -path './.git/*' \
-            | head -n 1)
+          PROJECT_DIR=$(find _source \
+            -type f -name gradlew | head -n 1)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: gradlew not found!"
+            echo "ERROR: gradlew not found in ZIP"
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$PROJECT_DIR")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Project found at: $PROJECT_DIR"
+          echo "Project: $PROJECT_DIR"
           ls -la "$PROJECT_DIR"
 
-      - name: Verify Project Files
+      - name: Verify Gradle Wrapper
         run: |
-          test -f "$PROJECT_DIR/settings.gradle.kts" -o \
-               -f "$PROJECT_DIR/settings.gradle"
-          test -d "$PROJECT_DIR/app"
           test -f "$PROJECT_DIR/gradlew"
+          test -f "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.jar"
+          test -f "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties"
+          test -d "$PROJECT_DIR/app"
 
-      - name: Build PURE HD AI Debug APK
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Debug APK
         run: |
           cd "$PROJECT_DIR"
           chmod +x gradlew
@@ -84,21 +78,20 @@ jobs:
       - name: Verify APK
         run: |
           APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
-            -name '*.apk' -type f | head -n 1)
+            -type f -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERROR: APK was not generated!"
+            echo "ERROR: APK not generated"
             exit 1
           fi
 
-          echo "APK successfully generated: $APK"
+          echo "APK FOUND: $APK"
           ls -lh "$APK"
 
-      - name: Upload PURE HD AI APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PureHD-AI-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
-          
