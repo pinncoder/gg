@@ -29,19 +29,30 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
-          packages: |
-            platform-tools
-            platforms;android-34
-            build-tools;34.0.0
+          log-accepted-android-sdk-licenses: false
+          packages: platform-tools
 
-      - name: Extract Android Project
+      - name: Install Android SDK 34
+        run: |
+          sdkmanager --install \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Extract Project ZIP
         shell: bash
         run: |
           set -e
           mkdir -p _source
 
-          for file in *.zip; do
-            [ -f "$file" ] || continue
+          shopt -s nullglob
+          ZIP_FILES=(*.zip)
+
+          if [ ${#ZIP_FILES[@]} -eq 0 ]; then
+            echo "ERROR: Project ZIP not found"
+            exit 1
+          fi
+
+          for file in "${ZIP_FILES[@]}"; do
             unzip -oq "$file" -d _source
           done
 
@@ -49,7 +60,7 @@ jobs:
             -type f -name gradlew | head -n 1)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: gradlew not found in ZIP"
+            echo "ERROR: gradlew not found"
             exit 1
           fi
 
@@ -57,9 +68,8 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo "Project: $PROJECT_DIR"
-          ls -la "$PROJECT_DIR"
 
-      - name: Verify Gradle Wrapper
+      - name: Verify Project
         run: |
           test -f "$PROJECT_DIR/gradlew"
           test -f "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.jar"
@@ -69,7 +79,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Debug APK
+      - name: Build APK
         run: |
           cd "$PROJECT_DIR"
           chmod +x gradlew
@@ -78,17 +88,13 @@ jobs:
       - name: Verify APK
         run: |
           APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
-            -type f -name "*.apk" | head -n 1)
+            -name "*.apk" -type f | head -n 1)
 
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK not generated"
-            exit 1
-          fi
-
-          echo "APK FOUND: $APK"
+          test -n "$APK"
+          echo "APK SUCCESS: $APK"
           ls -lh "$APK"
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PureHD-AI-debug-apk
